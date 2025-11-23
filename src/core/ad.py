@@ -13,6 +13,8 @@ class Ad:
     image_path: Optional[str] = None
     ocr_text: Optional[str] = None
     analysis: Optional["ImageAnalysis"] = None
+    text_hash: Optional[str] = None
+    phash: Optional[int] = None
     tags: List[str] = field(default_factory=list)
 
 
