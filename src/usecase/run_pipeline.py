@@ -1,8 +1,9 @@
 import asyncio
-from typing import List
+from dataclasses import dataclass
+from typing import List, Set
 
 from src.config import PipelineConfig
-from src.core.ad import Ad
+from src.core.ad import Ad, RankedAd
 from src.infra.file_downloader import FileDownloader
 from src.infra.meta_api import MetaApi
 from src.infra.supabase_storage import SupabaseStorage
@@ -10,7 +11,7 @@ from src.infra.tesseract_engine import TesseractEngine
 from src.usecase.analyze_image import analyze_ads
 from src.usecase.dedupe import dedupe_ads
 from src.usecase.download_images import download_ad_images
-from src.usecase.fetch_ads import fetch_ads
+from src.usecase.fetch_ads import FetchResult, fetch_ads
 from src.usecase.filter_noise import filter_noise
 from src.usecase.generate_tags import attach_tags
 from src.usecase.ocr_text import extract_text_from_ads
@@ -21,33 +22,76 @@ from src.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-def build_components(config: PipelineConfig):
-    ads_repo = MetaApi(config.meta_api)
-    downloader = FileDownloader(config.data_dir)
-    ocr_engine = TesseractEngine()
-    storage = SupabaseStorage(config.storage)
-    return ads_repo, downloader, ocr_engine, storage
+@dataclass(frozen=True)
+class PipelineDependencies:
+    ads_repo: MetaApi
+    downloader: FileDownloader
+    ocr_engine: TesseractEngine
+    storage: SupabaseStorage
 
 
-async def run_pipeline_async(config: PipelineConfig, limit: int = 10) -> List[Ad]:
-    ads_repo, downloader, ocr_engine, storage = build_components(config)
-    ads, new_page_ids = fetch_ads(ads_repo, limit)
-    ads = download_ad_images(downloader, ads, config.data_dir)
-    ads = extract_text_from_ads(ocr_engine, ads)
-    ads, dropped_noise = filter_noise(ads)
-    ads, dropped_dupes = dedupe_ads(ads)
-    logger.info("Post-filter counts: %s valid ads (noise=%s, dupes=%s)", len(ads), dropped_noise, dropped_dupes)
-    ads = analyze_ads(ads)
-    ads = attach_tags(ads)
-    ranked = rank_ads(ads)
-    save_ranking(ranked, config.ranking_output)
-    await save_ads(storage, ads)
-    if new_page_ids:
-        await storage.upsert_page_ids(new_page_ids)
-    await storage.close()
-    logger.info("Pipeline completed")
-    return ads
+def build_components(config: PipelineConfig) -> PipelineDependencies:
+    return PipelineDependencies(
+        ads_repo=MetaApi(config.meta_api),
+        downloader=FileDownloader(config.data_dir),
+        ocr_engine=TesseractEngine(),
+        storage=SupabaseStorage(config.storage),
+    )
+
+
+class PipelineRunner:
+    def __init__(self, config: PipelineConfig, dependencies: PipelineDependencies) -> None:
+        self.config = config
+        self.deps = dependencies
+
+    def run(self, limit: int) -> List[Ad]:
+        return asyncio.run(self.run_async(limit))
+
+    async def run_async(self, limit: int) -> List[Ad]:
+        fetched = self._fetch(limit)
+        processed_ads = self._process_ads(fetched.ads)
+        self._rank(processed_ads)
+        await self._persist(processed_ads, fetched.new_page_ids)
+        logger.info("Pipeline completed")
+        return processed_ads
+
+    def _fetch(self, limit: int) -> FetchResult:
+        return fetch_ads(self.deps.ads_repo, limit)
+
+    def _process_ads(self, ads: List[Ad]) -> List[Ad]:
+        ads = download_ad_images(self.deps.downloader, ads, self.config.data_dir)
+        ads = extract_text_from_ads(self.deps.ocr_engine, ads)
+        ads, dropped_noise = filter_noise(ads)
+        ads, dropped_dupes = dedupe_ads(ads)
+        logger.info(
+            "Post-filter counts: %s valid ads (noise=%s, dupes=%s)",
+            len(ads),
+            dropped_noise,
+            dropped_dupes,
+        )
+        ads = analyze_ads(ads)
+        ads = attach_tags(ads)
+        return ads
+
+    def _rank(self, ads: List[Ad]) -> List[RankedAd]:
+        ranked = rank_ads(ads)
+        save_ranking(ranked, self.config.ranking_output)
+        return ranked
+
+    async def _persist(self, ads: List[Ad], new_page_ids: Set[str]) -> None:
+        async with self.deps.storage as storage:
+            await save_ads(storage, ads)
+            if new_page_ids:
+                await storage.upsert_page_ids(new_page_ids)
 
 
 def run_pipeline(config: PipelineConfig, limit: int = 10) -> List[Ad]:
-    return asyncio.run(run_pipeline_async(config, limit))
+    dependencies = build_components(config)
+    runner = PipelineRunner(config, dependencies)
+    return runner.run(limit)
+
+
+async def run_pipeline_async(config: PipelineConfig, limit: int = 10) -> List[Ad]:
+    dependencies = build_components(config)
+    runner = PipelineRunner(config, dependencies)
+    return await runner.run_async(limit)
