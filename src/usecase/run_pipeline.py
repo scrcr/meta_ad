@@ -5,7 +5,7 @@ from typing import List, Set
 from src.config import PipelineConfig
 from src.core.ad import Ad, RankedAd
 from src.infra.file_downloader import FileDownloader
-from src.infra.meta_api import MetaApi
+from src.infra.meta_ads_scraper import MetaAdsLibraryScraper
 from src.infra.supabase_storage import SupabaseStorage
 from src.infra.tesseract_engine import TesseractEngine
 from src.usecase.analyze_image import analyze_ads
@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 
 @dataclass(frozen=True)
 class PipelineDependencies:
-    ads_repo: MetaApi
+    ads_repo: MetaAdsLibraryScraper
     downloader: FileDownloader
     ocr_engine: TesseractEngine
     storage: SupabaseStorage
@@ -32,7 +32,7 @@ class PipelineDependencies:
 
 def build_components(config: PipelineConfig) -> PipelineDependencies:
     return PipelineDependencies(
-        ads_repo=MetaApi(config.meta_api),
+        ads_repo=MetaAdsLibraryScraper(config.scraper),
         downloader=FileDownloader(config.data_dir),
         ocr_engine=TesseractEngine(),
         storage=SupabaseStorage(config.storage),
