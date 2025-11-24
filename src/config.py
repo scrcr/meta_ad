@@ -25,13 +25,34 @@ DEFAULT_GUARANTEE_PAGE_IDS: List[str] = [
     "155021662189",  # Toyota
 ]
 
+DEFAULT_HUMAN_USER_AGENTS: List[str] = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.4 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0 Safari/537.36",
+]
+
 DEFAULT_EXPLORE_SEARCH_TERMS: List[str] = ["the", "a", "to", "for", "in"]
 
 
 @dataclass
+class ScraperConfig:
+    page_ids: List[str] = field(default_factory=lambda: DEFAULT_GUARANTEE_PAGE_IDS)
+    viewport_width: int = 1280
+    viewport_height: int = 800
+    locale: str = "en-GB"
+    timezone: str = "Europe/London"
+    headless: bool = True
+    storage_state_path: str = os.path.join(".playwright", "meta_ads_context.json")
+    user_agents: List[str] = field(default_factory=lambda: DEFAULT_HUMAN_USER_AGENTS)
+    scroll_wait_min: float = 1.2
+    scroll_wait_max: float = 2.4
+    scroll_step: int = 300
+
+
+@dataclass
 class MetaApiConfig:
-    access_token: str
-    account_id: str
+    access_token: str = ""
+    account_id: str = ""
     page_size: int = 25
     guarantee_page_ids: List[str] = field(default_factory=lambda: DEFAULT_GUARANTEE_PAGE_IDS)
     ad_reached_countries: str = "GB"
@@ -48,7 +69,7 @@ class StorageConfig:
 
 @dataclass
 class PipelineConfig:
-    meta_api: MetaApiConfig
+    scraper: ScraperConfig
     storage: StorageConfig
     data_dir: str = os.path.join("data", "images")
     ranking_output: str = os.path.join("output", "ranking.json")
@@ -63,13 +84,20 @@ class PipelineConfig:
             return default
 
         return PipelineConfig(
-            meta_api=MetaApiConfig(
-                access_token=os.getenv("META_ACCESS_TOKEN", ""),
-                account_id=os.getenv("META_ACCOUNT_ID", ""),
-                page_size=int(os.getenv("META_PAGE_SIZE", "25")),
-                guarantee_page_ids=_parse_list("GUARANTEE_PAGE_IDS", DEFAULT_GUARANTEE_PAGE_IDS),
-                ad_reached_countries=os.getenv("AD_REACHED_COUNTRIES", "GB"),
-                explore_search_terms=_parse_list("EXPLORE_SEARCH_TERMS", DEFAULT_EXPLORE_SEARCH_TERMS),
+            scraper=ScraperConfig(
+                page_ids=_parse_list("SCRAPE_PAGE_IDS", DEFAULT_GUARANTEE_PAGE_IDS),
+                viewport_width=int(os.getenv("SCRAPER_VIEWPORT_WIDTH", "1280")),
+                viewport_height=int(os.getenv("SCRAPER_VIEWPORT_HEIGHT", "800")),
+                locale=os.getenv("SCRAPER_LOCALE", "en-GB"),
+                timezone=os.getenv("SCRAPER_TIMEZONE", "Europe/London"),
+                headless=os.getenv("SCRAPER_HEADLESS", "true").lower() != "false",
+                storage_state_path=os.getenv(
+                    "SCRAPER_STORAGE_STATE", os.path.join(".playwright", "meta_ads_context.json")
+                ),
+                user_agents=_parse_list("SCRAPER_USER_AGENTS", DEFAULT_HUMAN_USER_AGENTS),
+                scroll_wait_min=float(os.getenv("SCRAPER_SCROLL_WAIT_MIN", "1.2")),
+                scroll_wait_max=float(os.getenv("SCRAPER_SCROLL_WAIT_MAX", "2.4")),
+                scroll_step=int(os.getenv("SCRAPER_SCROLL_STEP", "300")),
             ),
             storage=StorageConfig(
                 supabase_url=os.getenv("SUPABASE_URL"),
