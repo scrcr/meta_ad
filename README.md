@@ -23,6 +23,7 @@ Running `python -m src.main` will:
    python -m venv .venv
    source .venv/bin/activate
    python -m pip install --upgrade pip
+
    python -m pip install playwright pillow imagehash opencv-python numpy pytesseract supabase python-dotenv
    python -m playwright install chromium
    ```

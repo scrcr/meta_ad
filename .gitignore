@@ -5,7 +5,7 @@ __pycache__/
 .env
 
 # Project specific
-data/
+data/images/
 output/
 
 # OS
