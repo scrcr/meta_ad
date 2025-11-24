@@ -24,7 +24,7 @@ Running `python -m src.main` will:
    source .venv/bin/activate
    python -m pip install --upgrade pip
 
-   python -m pip install playwright pillow imagehash opencv-python numpy pytesseract supabase python-dotenv
+   python -m pip install playwright pillow imagehash opencv-python numpy pytesseract supabase python-dotenv requests
    python -m playwright install chromium
    ```
    Add any additional packages needed for your environment (e.g., `opencv-python-headless` for servers without GUI support).

@@ -1,0 +1,9 @@
+playwright
+pillow
+imagehash
+opencv-python
+numpy
+pytesseract
+supabase
+python-dotenv
+requests
