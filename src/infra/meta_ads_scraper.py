@@ -16,7 +16,7 @@ class MetaAdsLibraryScraper(AdsRepository):
     """Scrape the Meta Ads Library web UI with human-like pacing."""
 
     base_url = (
-        "https://www.facebook.com/ads/library/?active_status=all&view_all_page_id={page_id}"
+        "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&content_languages[0]=en&country=ALL&is_targeted_country=false&media_type=image_and_meme&search_type=page&view_all_page_id={page_id}"
     )
 
     def __init__(self, config: ScraperConfig) -> None:
@@ -77,8 +77,22 @@ class MetaAdsLibraryScraper(AdsRepository):
 
     def _scrape_page(self, page: Page, page_id: str, remaining: int) -> List[Ad]:
         url = self.base_url.format(page_id=page_id)
+        logger.info("Accessing URL: %s", url)
         page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-        page.wait_for_timeout(random.uniform(1200, 2000))
+        
+        try:
+            # Wait for network to be idle (initial load)
+            page.wait_for_load_state("networkidle", timeout=10_000)
+        except Exception:
+            logger.warning("Timeout waiting for networkidle on %s", page_id)
+
+        # Try to wait for at least one ad card to appear
+        try:
+            page.wait_for_selector("div[role='article'], div[data-ad-preview-id]", timeout=10_000)
+        except Exception:
+            logger.info("No ads found immediately for %s (or timeout waiting for selector)", page_id)
+
+        page.wait_for_timeout(random.uniform(2000, 4000))
         self._slow_scroll(page)
         cards = self._extract_cards(page)
 
@@ -103,9 +117,18 @@ class MetaAdsLibraryScraper(AdsRepository):
             last_height = height
 
     def _extract_cards(self, page: Page):
+        # Use XPath to find the parent container of the header div
+        # The header div has class 'xh8yej3' and contains 'Library ID'
+        # We select the parent of that header div to get the full card
+        xpath_selector = "//div[contains(@class, 'xh8yej3') and .//span[contains(text(), 'Library ID')]]/.."
+        
+        cards = page.query_selector_all(xpath_selector)
+        if cards:
+            return cards
+
+        # Fallbacks
         selectors = [
             "div[data-ad-preview-id]",
-            "div[data-pagelet^='ad_lib_researcher_ad']",
             "div[role='article']",
         ]
         for selector in selectors:
@@ -120,6 +143,19 @@ class MetaAdsLibraryScraper(AdsRepository):
             or card.get_attribute("data-adid")
             or card.get_attribute("data-ad-id")
         )
+        
+        # Try to extract ID from text if attribute is missing
+        if not ad_id:
+            try:
+                id_span = card.query_selector("span:text('Library ID')")
+                if id_span:
+                    text = id_span.inner_text()
+                    # Expected format: "Library ID: 123456789"
+                    if "ID:" in text:
+                        ad_id = text.split("ID:")[-1].strip()
+            except Exception:
+                pass
+
         if not ad_id:
             ad_id = f"{page_id}-{fallback_idx+1}"
 
@@ -136,9 +172,13 @@ class MetaAdsLibraryScraper(AdsRepository):
         )
 
     def _extract_image(self, card) -> str | None:
-        image = card.query_selector("img")
-        if image:
-            return image.get_attribute("src") or image.get_attribute("data-src")
+        images = card.query_selector_all("img")
+        for img in images:
+            # Skip profile picture (usually has class '_8nqq')
+            if "_8nqq" in (img.get_attribute("class") or ""):
+                continue
+            # Return the first non-profile image
+            return img.get_attribute("src") or img.get_attribute("data-src")
         return None
 
     def _extract_text(self, card) -> str:

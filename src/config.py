@@ -83,7 +83,7 @@ class PipelineConfig:
                 viewport_height=int(os.getenv("SCRAPER_VIEWPORT_HEIGHT", "800")),
                 locale=os.getenv("SCRAPER_LOCALE", "en-GB"),
                 timezone=os.getenv("SCRAPER_TIMEZONE", "Europe/London"),
-                headless=os.getenv("SCRAPER_HEADLESS", "true").lower() != "false",
+                headless=os.getenv("SCRAPER_HEADLESS", "false").lower() != "false",
                 storage_state_path=os.getenv(
                     "SCRAPER_STORAGE_STATE", os.path.join(".playwright", "meta_ads_context.json")
                 ),

@@ -11,6 +11,10 @@ logger = get_logger(__name__)
 def main() -> None:
     load_dotenv()
     config = PipelineConfig.from_env()
+    if config.storage.supabase_url:
+        logger.info("Supabase URL loaded: %s...", config.storage.supabase_url[:10])
+    else:
+        logger.warning("Supabase URL NOT loaded")
     run_pipeline(config)
 
 

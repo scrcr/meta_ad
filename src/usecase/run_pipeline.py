@@ -51,7 +51,7 @@ class PipelineRunner:
         return asyncio.run(self.run_async(limit))
 
     async def run_async(self, limit: int) -> List[Ad]:
-        fetched = self._fetch(limit)
+        fetched = await asyncio.to_thread(self._fetch, limit)
         processed_ads = self._process_ads(fetched.ads)
         ranked_ads = self._rank(processed_ads)
         self._render(ranked_ads)
